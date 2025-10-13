@@ -183,32 +183,16 @@ def batch_experiment(heart_rates=(50, 55, 60, 65, 70, 75, 80), n_runs=100, T=60,
     print(f"[batch_experiment] Results written to {out_csv}")
 
 def main():
-    import csv
-    T = 60  # simulate for 60 seconds (1 minute)
-    # Heart rates in beats per minute (50 to 80 bpm)
-    heart_rates = np.array([50, 55, 60, 65, 70, 75, 80])
-    periods = 60.0 / heart_rates  # period in seconds between beats
-
-    results = []  # list of tuples: (heart_rate, hrv_error_full, hrv_error_missing)
-
-    for period in periods:
-        # Generate ideal periodic events.
-        ideal = generate_periodic_times(T, period)
-        # Apply full noise pipeline: jitter + missed detections + extraneous events.
-        noisy_full = apply_noise_pipeline(ideal, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
-        # Apply only missed detection noise.
-        noisy_missing = apply_missed_detections(ideal, p_detect=0.9, rng=rng)
-        hrv_error_full = measure_hrv_error(ideal, noisy_full)
-        hrv_error_missing = measure_hrv_error(ideal, noisy_missing)
-        results.append((60.0/period, hrv_error_full, hrv_error_missing))
-
-    with open("hrv_error_results.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["heart_rate", "hrv_error_full", "hrv_error_missing"])
-        for r in results:
-            writer.writerow(r)
-
-    print("HRV error results saved to hrv_error_results.csv")
-
+    # Run batch experiment for HRV error analysis with 5-minute simulations per experiment.
+    batch_experiment(
+        heart_rates=(50, 55, 60, 65, 70, 75, 80),
+        n_runs=100,
+        T=300,  # simulate for 300 seconds (5 minutes)
+        jitter_std=0.02,
+        p_detect=0.9,
+        bg_rate=0.2,
+        out_csv="hrv_error_batch.csv",
+    )
+    
 if __name__ == "__main__":
     main()
