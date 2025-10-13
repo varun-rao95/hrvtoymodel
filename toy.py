@@ -122,50 +122,52 @@ def apply_noise_pipeline(times, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, r
     final_times = add_extraneous_events(jittered, T, bg_rate, rng)
     return np.clip(final_times, 0, T)
 
+def compute_peak_to_peak_intervals(times):
+    """
+    Compute differences between consecutive event times.
+    """
+    return np.diff(times)
+
+def measure_hrv_error(ideal_times, noisy_times):
+    """
+    Measure error in heart rate variability (HRV) as the std deviation of the differences
+    between consecutive intervals in ideal and noisy times.
+    """
+    ideal_intervals = compute_peak_to_peak_intervals(ideal_times)
+    noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
+    min_len = min(len(ideal_intervals), len(noisy_intervals))
+    if min_len == 0:
+        return 0.0
+    error = noisy_intervals[:min_len] - ideal_intervals[:min_len]
+    return np.std(error)
+
 def main():
-    import matplotlib.pyplot as plt
     import csv
-
     T = 60  # simulate for 60 seconds (1 minute)
-    period = 1.0  # ideal period of 1 second (~60 bpm)
+    # Heart rates in beats per minute (50 to 80 bpm)
+    heart_rates = np.array([50, 55, 60, 65, 70, 75, 80])
+    periods = 60.0 / heart_rates  # period in seconds between beats
 
-    # --- Periodic Process ---
-    ideal_periodic = generate_periodic_times(T, period)
-    noisy_periodic = apply_noise_pipeline(ideal_periodic, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
+    results = []  # list of tuples: (heart_rate, hrv_error_full, hrv_error_missing)
 
-    # --- Nonhomogeneous Process using nhpp_sinusoidal_times ---
-    ideal_nhpp = nhpp_sinusoidal_times(T, lambda0=1.0, alpha=0.8, f=1.0, rng=rng)
-    noisy_nhpp = apply_noise_pipeline(ideal_nhpp, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
+    for period in periods:
+        # Generate ideal periodic events.
+        ideal = generate_periodic_times(T, period)
+        # Apply full noise pipeline: jitter + missed detections + extraneous events.
+        noisy_full = apply_noise_pipeline(ideal, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
+        # Apply only missed detection noise.
+        noisy_missing = apply_missed_detections(ideal, p_detect=0.9, rng=rng)
+        hrv_error_full = measure_hrv_error(ideal, noisy_full)
+        hrv_error_missing = measure_hrv_error(ideal, noisy_missing)
+        results.append((60.0/period, hrv_error_full, hrv_error_missing))
 
-    # Plot the events for visualization using subplots.
-    fig, axs = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
-    axs[0, 0].eventplot(ideal_periodic, colors='blue')
-    axs[0, 0].set_title('Periodic Ideal')
-    axs[0, 1].eventplot(noisy_periodic, colors='green')
-    axs[0, 1].set_title('Periodic Noisy')
-    axs[1, 0].eventplot(ideal_nhpp, colors='red')
-    axs[1, 0].set_title('NHPP Ideal')
-    axs[1, 1].eventplot(noisy_nhpp, colors='purple')
-    axs[1, 1].set_title('NHPP Noisy')
-    for ax in axs.flat:
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Events')
-    plt.suptitle('Heart Rate Simulation: Ideal and Noisy Events')
-    plt.tight_layout()
-    plt.savefig("heart_rate_events.png")
-    plt.show()
+    with open("hrv_error_results.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["heart_rate", "hrv_error_full", "hrv_error_missing"])
+        for r in results:
+            writer.writerow(r)
 
-    def write_csv(filename, data):
-        with open(filename, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["time"])
-            for t in data:
-                writer.writerow([t])
-
-    write_csv("periodic_ideal.csv", ideal_periodic)
-    write_csv("periodic_noisy.csv", noisy_periodic)
-    write_csv("nhpp_ideal.csv", ideal_nhpp)
-    write_csv("nhpp_noisy.csv", noisy_nhpp)
+    print("HRV error results saved to hrv_error_results.csv")
 
 if __name__ == "__main__":
     main()
