@@ -119,7 +119,8 @@ def apply_noise_pipeline(times, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, r
     """
     detected = apply_missed_detections(times, p_detect, rng)
     jittered = add_timestamp_jitter(detected, jitter_std, rng)
-    return add_extraneous_events(jittered, T, bg_rate, rng) # ai? do we have to ensure within [0, T)
+    final_times = add_extraneous_events(jittered, T, bg_rate, rng)
+    return np.clip(final_times, 0, T)
 
 def main():
     import matplotlib.pyplot as plt
