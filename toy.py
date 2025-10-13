@@ -1,4 +1,5 @@
 from numpy.fft import rfft, irfft, rfftfreq
+import numpy as np
 
 rng = np.random.default_rng(42)
 
