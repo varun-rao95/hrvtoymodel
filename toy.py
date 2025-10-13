@@ -109,6 +109,18 @@ def add_extraneous_events(times, T, bg_rate=0.2, rng=rng):
         all_times = times
     return np.sort(all_times)
 
+def apply_noise_pipeline(times, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng):
+    """
+    Apply noise pipeline to event times:
+    - Keeps events with probability p_detect,
+    - Adds timestamp jitter to the detected events,
+    - Superposes extraneous events (clutter).
+    Returns the final noisy event times.
+    """
+    detected = apply_missed_detections(times, p_detect, rng)
+    jittered = add_timestamp_jitter(detected, jitter_std, rng)
+    return add_extraneous_events(jittered, T, bg_rate, rng)
+
 def main():
     import matplotlib.pyplot as plt
     import csv
@@ -116,31 +128,27 @@ def main():
     T = 60  # simulate for 60 seconds (1 minute)
     period = 1.0  # ideal period of 1 second (~60 bpm)
 
-    # Generate ideal periodic events.
-    ideal = generate_periodic_times(T, period)
+    # --- Periodic Process ---
+    ideal_periodic = generate_periodic_times(T, period)
+    noisy_periodic = apply_noise_pipeline(ideal_periodic, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
 
-    # Generate noisy events:
-    # 1. Add timestamp jitter.
-    jittered = add_timestamp_jitter(ideal, jitter_std=0.02)
-    # 2. Apply missed detections.
-    missed = apply_missed_detections(ideal, p_detect=0.9)
-    # 3. Superpose extraneous events.
-    cluttered = add_extraneous_events(ideal, T, bg_rate=0.2)
+    # --- Nonhomogeneous Process using nhpp_sinusoidal_times ---
+    ideal_nhpp = nhpp_sinusoidal_times(T, lambda0=1.0, alpha=0.8, f=1.0, rng=rng)
+    noisy_nhpp = apply_noise_pipeline(ideal_nhpp, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, rng=rng)
 
     # Plot the events for visualization.
-    plt.figure(figsize=(10, 6))
-    plt.eventplot(ideal, lineoffsets=1, colors='blue')
-    plt.eventplot(jittered, lineoffsets=2, colors='green')
-    plt.eventplot(missed, lineoffsets=3, colors='red')
-    plt.eventplot(cluttered, lineoffsets=4, colors='purple')
-    plt.yticks([1, 2, 3, 4], ['Ideal', 'Jittered', 'Missed', 'Cluttered'])
+    plt.figure(figsize=(12, 8))
+    plt.eventplot(ideal_periodic, lineoffsets=1, colors='blue')
+    plt.eventplot(noisy_periodic, lineoffsets=2, colors='green')
+    plt.eventplot(ideal_nhpp, lineoffsets=3, colors='red')
+    plt.eventplot(noisy_nhpp, lineoffsets=4, colors='purple')
+    plt.yticks([1, 2, 3, 4], ['Periodic Ideal', 'Periodic Noisy', 'NHPP Ideal', 'NHPP Noisy'])
     plt.xlabel('Time (s)')
-    plt.title('Periodic Events with Noise (Heart Rate Simulation)')
+    plt.title('Heart Rate Simulation: Ideal and Noisy Events')
     plt.tight_layout()
-    plt.savefig("events_plot.png")
+    plt.savefig("heart_rate_events.png")
     plt.show()
 
-    # Write CSV files for each series of events.
     def write_csv(filename, data):
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -148,10 +156,10 @@ def main():
             for t in data:
                 writer.writerow([t])
 
-    write_csv("ideal.csv", ideal)
-    write_csv("jittered.csv", jittered)
-    write_csv("missed.csv", missed)
-    write_csv("cluttered.csv", cluttered)
+    write_csv("periodic_ideal.csv", ideal_periodic)
+    write_csv("periodic_noisy.csv", noisy_periodic)
+    write_csv("nhpp_ideal.csv", ideal_nhpp)
+    write_csv("nhpp_noisy.csv", noisy_nhpp)
 
 if __name__ == "__main__":
     main()
