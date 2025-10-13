@@ -141,6 +141,47 @@ def measure_hrv_error(ideal_times, noisy_times):
     error = noisy_intervals[:min_len] - ideal_intervals[:min_len]
     return np.std(error)
 
+def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_rate=0.2):
+    """
+    One simulation -> return (hrv_err_full, hrv_err_missing)
+    """
+    ideal = generate_periodic_times(T, period, phase=0.0)
+    noisy_full = apply_noise_pipeline(ideal, T, jitter_std=jitter_std, p_detect=p_detect, bg_rate=bg_rate, rng=rng)
+    noisy_missing = apply_missed_detections(ideal, p_detect=p_detect, rng=rng)
+    return (measure_hrv_error(ideal, noisy_full), measure_hrv_error(ideal, noisy_missing))
+
+def batch_experiment(heart_rates=(50, 55, 60, 65, 70, 75, 80), n_runs=100, T=60, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, out_csv="hrv_error_batch.csv"):
+    """
+    Run many simulations (different random seeds) and write mean ± std HRV errors for each heart-rate.
+    """
+    import csv
+    periods = 60.0 / np.asarray(heart_rates, dtype=float)
+    sum_full = np.zeros_like(periods, dtype=float)
+    sum_sq_full = np.zeros_like(periods, dtype=float)
+    sum_miss = np.zeros_like(periods, dtype=float)
+    sum_sq_miss = np.zeros_like(periods, dtype=float)
+
+    for run in range(n_runs):
+        local_rng = np.random.default_rng(run)
+        for i, period in enumerate(periods):
+            err_full, err_miss = simulate_errors_for_rate(period, T, local_rng, jitter_std=jitter_std, p_detect=p_detect, bg_rate=bg_rate)
+            sum_full[i] += err_full
+            sum_sq_full[i] += err_full ** 2
+            sum_miss[i] += err_miss
+            sum_sq_miss[i] += err_miss ** 2
+
+    mean_full = sum_full / n_runs
+    mean_miss = sum_miss / n_runs
+    std_full = np.sqrt(sum_sq_full / n_runs - mean_full ** 2)
+    std_miss = np.sqrt(sum_sq_miss / n_runs - mean_miss ** 2)
+
+    with open(out_csv, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["heart_rate", "hrv_error_full_mean", "hrv_error_full_std", "hrv_error_missing_mean", "hrv_error_missing_std"])
+        for hr, mf, sf, mm, sm in zip(heart_rates, mean_full, std_full, mean_miss, std_miss):
+            w.writerow([hr, mf, sf, mm, sm])
+    print(f"[batch_experiment] Results written to {out_csv}")
+
 def main():
     import csv
     T = 60  # simulate for 60 seconds (1 minute)
