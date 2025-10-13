@@ -77,20 +77,36 @@ def add_timestamp_jitter(times, jitter_std=0.01, rng=rng, kind="gaussian", half_
     kind="uniform": U(-half_width, +half_width)  (must set half_width)
     Clips to keep times in [0, inf) (you may later clip to [0, T)).
     """
-    pass # ai! please fill in this function
+    if kind == "gaussian":
+        jitter = rng.normal(0, jitter_std, size=times.shape)
+    elif kind == "uniform":
+        if half_width is None:
+            raise ValueError("half_width must be provided for uniform jitter")
+        jitter = rng.uniform(-half_width, half_width, size=times.shape)
+    else:
+        raise ValueError("Unknown jitter kind: " + str(kind))
+    new_times = times + jitter
+    return np.clip(new_times, 0, None)
 
 def apply_missed_detections(times, p_detect=0.9, rng=rng):
     """
     Keep each event independently with probability p_detect.
     """
-    pass # ai! please fill in this function to miss events with prob p
+    keep = rng.uniform(size=times.shape) < p_detect
+    return times[keep]
 
 def add_extraneous_events(times, T, bg_rate=0.2, rng=rng):
     """
     Superpose independent homogeneous Poisson 'clutter' with constant rate.
     Returns merged and sorted array.
     """
-    pass # AI! please fill in this function
+    extraneous_count = rng.poisson(bg_rate * T)
+    if extraneous_count > 0:
+        extras = rng.uniform(0, T, extraneous_count)
+        all_times = np.concatenate([times, extras])
+    else:
+        all_times = times
+    return np.sort(all_times)
 
 def main():
     pass
