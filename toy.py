@@ -150,49 +150,101 @@ def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_r
     noisy_missing = apply_missed_detections(ideal, p_detect=p_detect, rng=rng)
     return (measure_hrv_error(ideal, noisy_full), measure_hrv_error(ideal, noisy_missing))
 
-def batch_experiment(heart_rates=(50, 55, 60, 65, 70, 75, 80), n_runs=100, T=60, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, out_csv="hrv_error_batch.csv"):
+def batch_experiment(
+    heart_rates=(50, 55, 60, 65, 70, 75, 80),
+    n_runs=300,
+    T=900,  # 15-minute simulation window
+    jitter_std=0.02,
+    p_detect=0.9,
+    bg_rate=0.2,
+    out_csv="hrv_error_batch.csv",
+):
     """
-    Run many simulations (different random seeds) and write mean ± std HRV errors for each heart-rate.
+    Run many simulations and write mean ± std HRV errors for each heart-rate.
+    Two versions are stored:
+        * normalised error  (std ⋅ √N_intervals)  – removes 1/√N effect
+        * raw error (original std difference)
     """
     import csv
+
     periods = 60.0 / np.asarray(heart_rates, dtype=float)
-    sum_full = np.zeros_like(periods, dtype=float)
-    sum_sq_full = np.zeros_like(periods, dtype=float)
-    sum_miss = np.zeros_like(periods, dtype=float)
-    sum_sq_miss = np.zeros_like(periods, dtype=float)
+
+    # raw errors
+    sum_full_raw = np.zeros_like(periods)
+    sum_sq_full_raw = np.zeros_like(periods)
+    sum_miss_raw = np.zeros_like(periods)
+    sum_sq_miss_raw = np.zeros_like(periods)
+
+    # normalised errors
+    sum_full_norm = np.zeros_like(periods)
+    sum_sq_full_norm = np.zeros_like(periods)
+    sum_miss_norm = np.zeros_like(periods)
+    sum_sq_miss_norm = np.zeros_like(periods)
 
     for run in range(n_runs):
         local_rng = np.random.default_rng(run)
         for i, period in enumerate(periods):
-            err_full, err_miss = simulate_errors_for_rate(period, T, local_rng, jitter_std=jitter_std, p_detect=p_detect, bg_rate=bg_rate)
-            sum_full[i] += err_full
-            sum_sq_full[i] += err_full ** 2
-            sum_miss[i] += err_miss
-            sum_sq_miss[i] += err_miss ** 2
+            err_full_raw, err_miss_raw = simulate_errors_for_rate(
+                period, T, local_rng, jitter_std=jitter_std,
+                p_detect=p_detect, bg_rate=bg_rate
+            )
+            # number of intervals for this period in window T
+            n_int = max(int(T / period) - 1, 1)
+            scale = np.sqrt(n_int)
 
-    mean_full = sum_full / n_runs
-    mean_miss = sum_miss / n_runs
-    std_full = np.sqrt(sum_sq_full / n_runs - mean_full ** 2)
-    std_miss = np.sqrt(sum_sq_miss / n_runs - mean_miss ** 2)
+            err_full_norm = err_full_raw * scale
+            err_miss_norm = err_miss_raw * scale
 
+            # accumulate
+            sum_full_raw[i] += err_full_raw
+            sum_sq_full_raw[i] += err_full_raw ** 2
+            sum_miss_raw[i] += err_miss_raw
+            sum_sq_miss_raw[i] += err_miss_raw ** 2
+
+            sum_full_norm[i] += err_full_norm
+            sum_sq_full_norm[i] += err_full_norm ** 2
+            sum_miss_norm[i] += err_miss_norm
+            sum_sq_miss_norm[i] += err_miss_norm ** 2
+
+    # compute means & stds
+    mean_full_norm = sum_full_norm / n_runs
+    std_full_norm = np.sqrt(sum_sq_full_norm / n_runs - mean_full_norm ** 2)
+    mean_miss_norm = sum_miss_norm / n_runs
+    std_miss_norm = np.sqrt(sum_sq_miss_norm / n_runs - mean_miss_norm ** 2)
+
+    mean_full_raw = sum_full_raw / n_runs
+    std_full_raw = np.sqrt(sum_sq_full_raw / n_runs - mean_full_raw ** 2)
+    mean_miss_raw = sum_miss_raw / n_runs
+    std_miss_raw = np.sqrt(sum_sq_miss_raw / n_runs - mean_miss_raw ** 2)
+
+    # write CSV
     with open(out_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["heart_rate", "hrv_error_full_mean", "hrv_error_full_std", "hrv_error_missing_mean", "hrv_error_missing_std"])
-        for hr, mf, sf, mm, sm in zip(heart_rates, mean_full, std_full, mean_miss, std_miss):
-            w.writerow([hr, mf, sf, mm, sm])
+        w.writerow(
+            [
+                "heart_rate",
+                "hrv_error_full_norm_mean",
+                "hrv_error_full_norm_std",
+                "hrv_error_full_mean",
+                "hrv_error_full_std",
+                "hrv_error_missing_norm_mean",
+                "hrv_error_missing_norm_std",
+                "hrv_error_missing_mean",
+                "hrv_error_missing_std",
+            ]
+        )
+        for vals in zip(
+            heart_rates,
+            mean_full_norm, std_full_norm, mean_full_raw, std_full_raw,
+            mean_miss_norm, std_miss_norm, mean_miss_raw, std_miss_raw,
+        ):
+            w.writerow(vals)
+
     print(f"[batch_experiment] Results written to {out_csv}")
 
 def main():
     # Run batch experiment for HRV error analysis with 5-minute simulations per experiment.
-    batch_experiment(
-        heart_rates=(50, 55, 60, 65, 70, 75, 80),
-        n_runs=100,
-        T=300,  # simulate for 300 seconds (5 minutes)
-        jitter_std=0.02,
-        p_detect=0.9,
-        bg_rate=0.2,
-        out_csv="hrv_error_batch.csv",
-    )
+    batch_experiment()  # use defaults defined above
     
 if __name__ == "__main__":
     main()
