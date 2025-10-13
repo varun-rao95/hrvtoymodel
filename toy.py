@@ -110,7 +110,48 @@ def add_extraneous_events(times, T, bg_rate=0.2, rng=rng):
     return np.sort(all_times)
 
 def main():
-    pass
+    import matplotlib.pyplot as plt
+    import csv
+
+    T = 60  # simulate for 60 seconds (1 minute)
+    period = 1.0  # ideal period of 1 second (~60 bpm)
+
+    # Generate ideal periodic events.
+    ideal = generate_periodic_times(T, period)
+
+    # Generate noisy events:
+    # 1. Add timestamp jitter.
+    jittered = add_timestamp_jitter(ideal, jitter_std=0.02)
+    # 2. Apply missed detections.
+    missed = apply_missed_detections(ideal, p_detect=0.9)
+    # 3. Superpose extraneous events.
+    cluttered = add_extraneous_events(ideal, T, bg_rate=0.2)
+
+    # Plot the events for visualization.
+    plt.figure(figsize=(10, 6))
+    plt.eventplot(ideal, lineoffsets=1, colors='blue')
+    plt.eventplot(jittered, lineoffsets=2, colors='green')
+    plt.eventplot(missed, lineoffsets=3, colors='red')
+    plt.eventplot(cluttered, lineoffsets=4, colors='purple')
+    plt.yticks([1, 2, 3, 4], ['Ideal', 'Jittered', 'Missed', 'Cluttered'])
+    plt.xlabel('Time (s)')
+    plt.title('Periodic Events with Noise (Heart Rate Simulation)')
+    plt.tight_layout()
+    plt.savefig("events_plot.png")
+    plt.show()
+
+    # Write CSV files for each series of events.
+    def write_csv(filename, data):
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["time"])
+            for t in data:
+                writer.writerow([t])
+
+    write_csv("ideal.csv", ideal)
+    write_csv("jittered.csv", jittered)
+    write_csv("missed.csv", missed)
+    write_csv("cluttered.csv", cluttered)
 
 if __name__ == "__main__":
     main()
