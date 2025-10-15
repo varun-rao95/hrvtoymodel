@@ -196,6 +196,28 @@ def batch_experiment(
     sum_sq_full_norm = np.zeros_like(periods)
     sum_miss_norm = np.zeros_like(periods)
     sum_sq_miss_norm = np.zeros_like(periods)
+    # raw errors for jitter and extraneous
+    sum_jitter_raw = np.zeros_like(periods)
+    sum_sq_jitter_raw = np.zeros_like(periods)
+    sum_extraneous_raw = np.zeros_like(periods)
+    sum_sq_extraneous_raw = np.zeros_like(periods)
+
+    # normalised errors for jitter and extraneous
+    sum_jitter_norm = np.zeros_like(periods)
+    sum_sq_jitter_norm = np.zeros_like(periods)
+    sum_extraneous_norm = np.zeros_like(periods)
+    sum_sq_extraneous_norm = np.zeros_like(periods)
+
+    # additional errors for jitter and extraneous events
+    sum_jitter_raw = np.zeros_like(periods)
+    sum_sq_jitter_raw = np.zeros_like(periods)
+    sum_extraneous_raw = np.zeros_like(periods)
+    sum_sq_extraneous_raw = np.zeros_like(periods)
+
+    sum_jitter_norm = np.zeros_like(periods)
+    sum_sq_jitter_norm = np.zeros_like(periods)
+    sum_extraneous_norm = np.zeros_like(periods)
+    sum_sq_extraneous_norm = np.zeros_like(periods)
 
     for run in range(n_runs):
         local_rng = np.random.default_rng(run)
@@ -210,30 +232,48 @@ def batch_experiment(
 
             err_full_norm = err_full_raw * scale
             err_miss_norm = err_miss_raw * scale
+            err_jitter_norm = err_jitter_raw * scale
+            err_extraneous_norm = err_extraneous_raw * scale
+            err_jitter_norm = err_jitter_raw * scale
+            err_extraneous_norm = err_extraneous_raw * scale
 
-            # ai! you need to err_jitter_norm, err_extraneous_norm here
             # accumulate
             sum_full_raw[i] += err_full_raw
             sum_sq_full_raw[i] += err_full_raw ** 2
             sum_miss_raw[i] += err_miss_raw
-            sum_sq_miss_raw[i] += err_miss_raw ** 2i # ai! do the same for err_jitter_raw, err_extraneous_raw
+            sum_sq_miss_raw[i] += err_miss_raw ** 2
+            sum_jitter_raw[i] += err_jitter_raw
+            sum_sq_jitter_raw[i] += err_jitter_raw ** 2
+            sum_extraneous_raw[i] += err_extraneous_raw
+            sum_sq_extraneous_raw[i] += err_extraneous_raw ** 2
 
             sum_full_norm[i] += err_full_norm
             sum_sq_full_norm[i] += err_full_norm ** 2
             sum_miss_norm[i] += err_miss_norm
-            sum_sq_miss_norm[i] += err_miss_norm ** 2  # ai! do the same for err_jitter_norm, err_extraneous_norm
+            sum_sq_miss_norm[i] += err_miss_norm ** 2
+            sum_jitter_norm[i] += err_jitter_norm
+            sum_sq_jitter_norm[i] += err_jitter_norm ** 2
+            sum_extraneous_norm[i] += err_extraneous_norm
+            sum_sq_extraneous_norm[i] += err_extraneous_norm ** 2
 
     # compute means & stds
-    # ai! please compute mean and std for jitter + extraneous errors too!
     mean_full_norm = sum_full_norm / n_runs
     std_full_norm = np.sqrt(sum_sq_full_norm / n_runs - mean_full_norm ** 2)
     mean_miss_norm = sum_miss_norm / n_runs
     std_miss_norm = np.sqrt(sum_sq_miss_norm / n_runs - mean_miss_norm ** 2)
+    mean_jitter_norm = sum_jitter_norm / n_runs
+    std_jitter_norm = np.sqrt(sum_sq_jitter_norm / n_runs - mean_jitter_norm ** 2)
+    mean_extraneous_norm = sum_extraneous_norm / n_runs
+    std_extraneous_norm = np.sqrt(sum_sq_extraneous_norm / n_runs - mean_extraneous_norm ** 2)
 
     mean_full_raw = sum_full_raw / n_runs
     std_full_raw = np.sqrt(sum_sq_full_raw / n_runs - mean_full_raw ** 2)
     mean_miss_raw = sum_miss_raw / n_runs
     std_miss_raw = np.sqrt(sum_sq_miss_raw / n_runs - mean_miss_raw ** 2)
+    mean_jitter_raw = sum_jitter_raw / n_runs
+    std_jitter_raw = np.sqrt(sum_sq_jitter_raw / n_runs - mean_jitter_raw ** 2)
+    mean_extraneous_raw = sum_extraneous_raw / n_runs
+    std_extraneous_raw = np.sqrt(sum_sq_extraneous_raw / n_runs - mean_extraneous_raw ** 2)
 
     # write CSV
     with open(out_csv, "w", newline="") as f:
@@ -249,12 +289,22 @@ def batch_experiment(
                 "hrv_error_missing_norm_std",
                 "hrv_error_missing_mean",
                 "hrv_error_missing_std",
+                "hrv_error_jitter_norm_mean",
+                "hrv_error_jitter_norm_std",
+                "hrv_error_extraneous_norm_mean",
+                "hrv_error_extraneous_norm_std",
+                "hrv_error_jitter_mean",
+                "hrv_error_jitter_std",
+                "hrv_error_extraneous_mean",
+                "hrv_error_extraneous_std",
             ]
         )
         for vals in zip(
             heart_rates,
             mean_full_norm, std_full_norm, mean_full_raw, std_full_raw,
             mean_miss_norm, std_miss_norm, mean_miss_raw, std_miss_raw,
+            mean_jitter_norm, std_jitter_norm, mean_extraneous_norm, std_extraneous_norm,
+            mean_jitter_raw, std_jitter_raw, mean_extraneous_raw, std_extraneous_raw,
         ):
             w.writerow(vals)
 
