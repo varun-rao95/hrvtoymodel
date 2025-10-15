@@ -237,7 +237,7 @@ def batch_experiment(
             err_jitter_norm = err_jitter_raw * scale
             err_extraneous_norm = err_extraneous_raw * scale
 
-            # accumulate
+            # accumulate raw errors
             sum_full_raw[i] += err_full_raw
             sum_sq_full_raw[i] += err_full_raw ** 2
             sum_miss_raw[i] += err_miss_raw
@@ -246,7 +246,7 @@ def batch_experiment(
             sum_sq_jitter_raw[i] += err_jitter_raw ** 2
             sum_extraneous_raw[i] += err_extraneous_raw
             sum_sq_extraneous_raw[i] += err_extraneous_raw ** 2
-
+            # accumulate normalised errors
             sum_full_norm[i] += err_full_norm
             sum_sq_full_norm[i] += err_full_norm ** 2
             sum_miss_norm[i] += err_miss_norm
@@ -272,6 +272,8 @@ def batch_experiment(
     std_miss_raw = np.sqrt(sum_sq_miss_raw / n_runs - mean_miss_raw ** 2)
     mean_jitter_raw = sum_jitter_raw / n_runs
     std_jitter_raw = np.sqrt(sum_sq_jitter_raw / n_runs - mean_jitter_raw ** 2)
+    mean_extraneous_raw = sum_extraneous_raw / n_runs
+    std_extraneous_raw = np.sqrt(sum_sq_extraneous_raw / n_runs - mean_extraneous_raw ** 2)
     mean_extraneous_raw = sum_extraneous_raw / n_runs
     std_extraneous_raw = np.sqrt(sum_sq_extraneous_raw / n_runs - mean_extraneous_raw ** 2)
 
