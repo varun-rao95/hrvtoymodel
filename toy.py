@@ -1,5 +1,7 @@
 from numpy.fft import rfft, irfft, rfftfreq
 import numpy as np
+import os
+from datetime import datetime
 
 rng = np.random.default_rng(42)
 
@@ -128,27 +130,40 @@ def compute_peak_to_peak_intervals(times):
     """
     return np.diff(times)
 
-def measure_hrv_error(ideal_times, noisy_times):
+def measure_hrv_error(ideal_times, noisy_times, debug=False):
     """
     Measure error in heart rate variability (HRV) as the std deviation of the differences
     between consecutive intervals in ideal and noisy times.
     """
     ideal_intervals = compute_peak_to_peak_intervals(ideal_times)
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
+    if debug:
+        os.makedirs("debug_hrv", exist_ok=True)
+        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + ".txt")
+        with open(filename, "w") as f:
+            f.write("Ideal intervals: " + str(ideal_intervals) + "\n")
+            f.write("Noisy intervals: " + str(noisy_intervals) + "\n")
     min_len = min(len(ideal_intervals), len(noisy_intervals))
     if min_len == 0:
         return 0.0
     error = noisy_intervals[:min_len] - ideal_intervals[:min_len]
     return np.std(error)
 
-def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_rate=0.2):
+def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, debug=False):
     """
     One simulation -> return (hrv_err_full, hrv_err_missing)
     """
     ideal = generate_periodic_times(T, period, phase=0.0)
     noisy_full = apply_noise_pipeline(ideal, T, jitter_std=jitter_std, p_detect=p_detect, bg_rate=bg_rate, rng=rng)
     noisy_missing = apply_missed_detections(ideal, p_detect=p_detect, rng=rng)
-    return (measure_hrv_error(ideal, noisy_full), measure_hrv_error(ideal, noisy_missing))
+    noisy_jitter = add_timestamp_jitter(ideal, jitter_std, rng)
+    noisy_extraneous = add_extraneous_events(ideal, T, bg_rate, rng)
+    return (
+        measure_hrv_error(ideal, noisy_full, debug),
+        measure_hrv_error(ideal, noisy_missing, debug),
+        measure_hrv_error(ideal, noisy_jitter, debug),
+        measure_hrv_error(ideal, noisy_extraneous, debug)
+    )
 
 def batch_experiment(
     heart_rates=(50, 55, 60, 65, 70, 75, 80),
@@ -158,6 +173,7 @@ def batch_experiment(
     p_detect=0.9,
     bg_rate=0.2,
     out_csv="hrv_error_batch.csv",
+    debug=False,
 ):
     """
     Run many simulations and write mean ± std HRV errors for each heart-rate.
@@ -184,9 +200,9 @@ def batch_experiment(
     for run in range(n_runs):
         local_rng = np.random.default_rng(run)
         for i, period in enumerate(periods):
-            err_full_raw, err_miss_raw = simulate_errors_for_rate(
+            err_full_raw, err_miss_raw, err_jitter_raw, err_extraneous_raw = simulate_errors_for_rate(
                 period, T, local_rng, jitter_std=jitter_std,
-                p_detect=p_detect, bg_rate=bg_rate
+                p_detect=p_detect, bg_rate=bg_rate, debug=True
             )
             # number of intervals for this period in window T
             n_int = max(int(T / period) - 1, 1)
@@ -195,18 +211,20 @@ def batch_experiment(
             err_full_norm = err_full_raw * scale
             err_miss_norm = err_miss_raw * scale
 
+            # ai! you need to err_jitter_norm, err_extraneous_norm here
             # accumulate
             sum_full_raw[i] += err_full_raw
             sum_sq_full_raw[i] += err_full_raw ** 2
             sum_miss_raw[i] += err_miss_raw
-            sum_sq_miss_raw[i] += err_miss_raw ** 2
+            sum_sq_miss_raw[i] += err_miss_raw ** 2i # ai! do the same for err_jitter_raw, err_extraneous_raw
 
             sum_full_norm[i] += err_full_norm
             sum_sq_full_norm[i] += err_full_norm ** 2
             sum_miss_norm[i] += err_miss_norm
-            sum_sq_miss_norm[i] += err_miss_norm ** 2
+            sum_sq_miss_norm[i] += err_miss_norm ** 2  # ai! do the same for err_jitter_norm, err_extraneous_norm
 
     # compute means & stds
+    # ai! please compute mean and std for jitter + extraneous errors too!
     mean_full_norm = sum_full_norm / n_runs
     std_full_norm = np.sqrt(sum_sq_full_norm / n_runs - mean_full_norm ** 2)
     mean_miss_norm = sum_miss_norm / n_runs
@@ -244,7 +262,7 @@ def batch_experiment(
 
 def main():
     # Run batch experiment for HRV error analysis with 5-minute simulations per experiment.
-    batch_experiment()  # use defaults defined above
+    batch_experiment(debug=True)  # use defaults defined above
     
 if __name__ == "__main__":
     main()
