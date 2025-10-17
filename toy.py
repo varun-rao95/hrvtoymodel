@@ -3,6 +3,46 @@ import numpy as np
 import os
 from datetime import datetime
 
+# ai! TODO: BEGIN Simulated Data Curve Fitting Pipeline ----------------------------------------------
+# ai! Implement full HRV-error curve-fitting functionality described in the README.
+# ai!
+# ai! 1. Dataset assembly
+# ai!    - Currently we write out csv files containing HRV timestamps in debug_hrv --> they are currently .txt files-->
+# ai!	   let's write out as csv files prefixed by pipeline number along with timestamp so that we can load up a 
+# ai!      pandas.DataFrame with per-pipeline √N-normalised MAE values for each heart-rate and run.
+# ai!
+# ai! 2. Closed-form model functions (see README formulas):
+# ai!       miss_model(hr, q_over_p, T)
+# ai!       jitter_model(hr, sigma_t, T)
+# ai!       extra_model(hr, lambda_bg, T)
+# ai!       combined_model(hr, q_over_p, sigma_t, lambda_bg, T)
+# ai!
+# ai! 3. Parameter fitting helpers using scipy:
+# ai!       fit_pipeline2(df)  -> q_over_p
+# ai!       fit_pipeline3(df)  -> sigma_t
+# ai!       fit_pipeline4(df)  -> lambda_bg
+# ai!       fit_pipeline1(df)  -> (q_over_p, sigma_t, lambda_bg)  (use `least_squares` with Huber loss)
+# ai!
+# ai! 4. Parametric bootstrap:
+# ai!       bootstrap_parameters(fit_func, df, n_boot=1000) -> (param_samples, ci_low, ci_high)
+# ai!
+# ai! 5. Diagnostic plots written to `figures/`:
+# ai!       - Residuals vs HR
+# ai!       - Data + fitted curves + 95 % CI bands
+# ai!
+# ai! 6. CLI integration:
+# ai!       `python toy.py fit_curves --out results.json` runs the full pipeline and serialises results.
+# ai!       Add argparse dispatch in `main()`.
+# ai!
+# ai! 7. Declare / add dependencies:
+# ai!       pandas, scipy, matplotlib, seaborn
+# ai!
+# ai! Required future imports once implemented:
+# ai! import pandas as pd
+# ai! from scipy.optimize import curve_fit, least_squares
+# ai! import matplotlib.pyplot as plt
+# ai! END TODO --------------------------------------------------------------------------------------
+
 rng = np.random.default_rng(42)
 
 # Signal Generation
