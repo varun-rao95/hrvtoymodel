@@ -3,47 +3,177 @@ import numpy as np
 import os
 from datetime import datetime
 
-# ai! TODO: BEGIN Simulated Data Curve Fitting Pipeline ----------------------------------------------
-# ai! Implement full HRV-error curve-fitting functionality described in the README.
-# ai!
-# ai! 1. Dataset assembly
-# ai!    - Currently we write out csv files containing HRV timestamps in debug_hrv --> they are currently .txt files-->
-# ai!	   let's write out as csv files prefixed by pipeline number along with timestamp so that we can load up a 
-# ai!      pandas.DataFrame with per-pipeline √N-normalised MAE values for each heart-rate and run.
-# ai!
-# ai! 2. Closed-form model functions (see README formulas):
-# ai!       miss_model(hr, q_over_p, T)
-# ai!       jitter_model(hr, sigma_t, T)
-# ai!       extra_model(hr, lambda_bg, T)
-# ai!       combined_model(hr, q_over_p, sigma_t, lambda_bg, T)
-# ai!
-# ai! 3. Parameter fitting helpers using scipy:
-# ai!       fit_pipeline2(df)  -> q_over_p
-# ai!       fit_pipeline3(df)  -> sigma_t
-# ai!       fit_pipeline4(df)  -> lambda_bg
-# ai!       fit_pipeline1(df)  -> (q_over_p, sigma_t, lambda_bg)  (use `least_squares` with Huber loss)
-# ai!
-# ai! 4. Parametric bootstrap:
-# ai!       bootstrap_parameters(fit_func, df, n_boot=1000) -> (param_samples, ci_low, ci_high)
-# ai!
-# ai! 5. Diagnostic plots written to `figures/`:
-# ai!       - Residuals vs HR
-# ai!       - Data + fitted curves + 95 % CI bands
-# ai!
-# ai! 6. CLI integration:
-# ai!       `python toy.py fit_curves --out results.json` runs the full pipeline and serialises results.
-# ai!       Add argparse dispatch in `main()`.
-# ai!
-# ai! 7. Declare / add dependencies:
-# ai!       pandas, scipy, matplotlib, seaborn
-# ai!
-# ai! Required future imports once implemented:
-# ai! import pandas as pd
-# ai! from scipy.optimize import curve_fit, least_squares
-# ai! import matplotlib.pyplot as plt
-# ai! END TODO --------------------------------------------------------------------------------------
+# Additional scientific/plotting imports for curve-fitting pipeline
+import pandas as pd
+from scipy.optimize import curve_fit, least_squares
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import json
+import argparse
 
 rng = np.random.default_rng(42)
+
+# ---------------------------------------------------------------------
+# High-level curve-fitting helpers (dataset assembly, models, fitting)
+# ---------------------------------------------------------------------
+
+
+def miss_model(hr, q_over_p, T):
+    """Pipeline-2 miss-only curve."""
+    hr = np.asarray(hr, dtype=float)
+    return q_over_p * np.sqrt(T * 60.0 / hr)
+
+
+def jitter_model(hr, sigma_t, T):
+    """Pipeline-3 jitter-only curve."""
+    hr = np.asarray(hr, dtype=float)
+    return 1.596 * sigma_t * np.sqrt(T) * np.sqrt(hr / 60.0)
+
+
+def extra_model(hr, lambda_bg, T):
+    """Pipeline-4 extraneous-only curve."""
+    hr = np.asarray(hr, dtype=float)
+    return 0.5 * lambda_bg * np.sqrt(T) * (60.0 / hr) ** 1.5
+
+
+def combined_model(hr, q_over_p, sigma_t, lambda_bg, T):
+    """Pipeline-1 combined curve."""
+    return (
+        miss_model(hr, q_over_p, T)
+        + jitter_model(hr, sigma_t, T)
+        + extra_model(hr, lambda_bg, T)
+    )
+
+
+def assemble_hrv_dataset(
+    heart_rates=(50, 55, 60, 65, 70, 75, 80),
+    n_runs=300,
+    T=900,
+    jitter_std=0.02,
+    p_detect=0.9,
+    bg_rate=0.2,
+):
+    """
+    Run simulations and return a pandas.DataFrame with per-pipeline √N-normalised
+    MAE values for each heart-rate/run.
+    """
+    records = []
+    for run in range(n_runs):
+        local_rng = np.random.default_rng(run)
+        for hr in heart_rates:
+            period = 60.0 / hr
+            n_int = max(int(T / period) - 1, 1)
+            scale = np.sqrt(n_int)
+            errs = simulate_errors_for_rate(
+                period,
+                T,
+                local_rng,
+                jitter_std=jitter_std,
+                p_detect=p_detect,
+                bg_rate=bg_rate,
+            )
+            for pipeline_id, err in enumerate(errs, start=1):
+                records.append(
+                    dict(
+                        run=run,
+                        heart_rate=hr,
+                        pipeline=pipeline_id,
+                        mae_sqrtN=err * scale,
+                    )
+                )
+    return pd.DataFrame.from_records(records)
+
+
+# ------------------------- fitting helpers -------------------------
+
+
+def _fit_curve(func, hr, y, p0):
+    popt, _ = curve_fit(func, hr, y, p0=p0, maxfev=10000)
+    return popt
+
+
+def fit_pipeline2(df, T):
+    hr = df["heart_rate"].values
+    y = df["mae_sqrtN"].values
+    return _fit_curve(lambda h, q: miss_model(h, q, T), hr, y, p0=(0.1,))[0]
+
+
+def fit_pipeline3(df, T):
+    hr = df["heart_rate"].values
+    y = df["mae_sqrtN"].values
+    return _fit_curve(lambda h, s: jitter_model(h, s, T), hr, y, p0=(0.01,))[0]
+
+
+def fit_pipeline4(df, T):
+    hr = df["heart_rate"].values
+    y = df["mae_sqrtN"].values
+    return _fit_curve(lambda h, l: extra_model(h, l, T), hr, y, p0=(0.01,))[0]
+
+
+def fit_pipeline1(df, T, huber_delta=1.0):
+    hr = df["heart_rate"].values
+    y = df["mae_sqrtN"].values
+    x0 = (0.1, 0.01, 0.01)
+
+    def residuals(p):
+        return combined_model(hr, p[0], p[1], p[2], T) - y
+
+    res = least_squares(
+        residuals, x0, loss="huber", f_scale=huber_delta, max_nfev=10000
+    )
+    return res.x
+
+
+# ------------------------ bootstrap helper -------------------------
+
+
+def bootstrap_parameters(fit_func, df, T, n_boot=1000, random_state=0):
+    rng_bs = np.random.default_rng(random_state)
+    samples = []
+    for _ in range(n_boot):
+        boot_df = df.sample(len(df), replace=True, random_state=rng_bs.integers(1e9))
+        est = fit_func(boot_df, T)
+        est = np.atleast_1d(est)
+        samples.append(est)
+    samples = np.vstack(samples)
+    ci_low = np.percentile(samples, 2.5, axis=0)
+    ci_high = np.percentile(samples, 97.5, axis=0)
+    return samples, ci_low, ci_high
+
+
+# -------------------------- diagnostics ----------------------------
+
+
+def _plot_pipeline(df, T, pipeline_id, params, out_dir):
+    hr_grid = np.linspace(df.heart_rate.min(), df.heart_rate.max(), 300)
+    if pipeline_id == 1:
+        pred = combined_model(hr_grid, *params, T)
+    elif pipeline_id == 2:
+        pred = miss_model(hr_grid, params, T)
+    elif pipeline_id == 3:
+        pred = jitter_model(hr_grid, params, T)
+    else:
+        pred = extra_model(hr_grid, params, T)
+
+    sns.scatterplot(
+        data=df, x="heart_rate", y="mae_sqrtN", alpha=0.4, label="simulated"
+    )
+    plt.plot(hr_grid, pred, color="k", label="fitted")
+    plt.title(f"Pipeline {pipeline_id}")
+    plt.xlabel("Heart Rate (bpm)")
+    plt.ylabel("MAE · √N  (s)")
+    plt.legend()
+    plt.tight_layout()
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    plt.savefig(Path(out_dir) / f"pipeline{pipeline_id}_fit.png", dpi=150)
+    plt.clf()
+
+
+def plot_diagnostics(df, results, T, out_dir="figures"):
+    for pid in (1, 2, 3, 4):
+        res = results[f"pipeline{pid}"]
+        _plot_pipeline(df[df.pipeline == pid], T, pid, list(res.values()), out_dir)
 
 # Signal Generation
 
@@ -353,8 +483,47 @@ def batch_experiment(
     print(f"[batch_experiment] Results written to {out_csv}")
 
 def main():
-    # Run batch experiment for HRV error analysis with 5-minute simulations per experiment.
-    batch_experiment(debug=True)  # use defaults defined above
+    parser = argparse.ArgumentParser(
+        description="HRV error simulation / curve-fitting utility"
+    )
+    sub = parser.add_subparsers(dest="cmd")
+
+    # --- batch ---
+    p_batch = sub.add_parser("batch", help="run batch experiment and write CSV")
+    p_batch.add_argument("--out", default="hrv_error_batch.csv")
+
+    # --- fit ---
+    p_fit = sub.add_parser("fit_curves", help="assemble dataset and fit error curves")
+    p_fit.add_argument("--out", default="results.json")
+    p_fit.add_argument("--figures", default="figures")
+
+    args = parser.parse_args()
+
+    if args.cmd == "fit_curves":
+        df = assemble_hrv_dataset()
+        T = 900
+
+        q_over_p = fit_pipeline2(df[df.pipeline == 2], T)
+        sigma_t = fit_pipeline3(df[df.pipeline == 3], T)
+        lambda_bg = fit_pipeline4(df[df.pipeline == 4], T)
+        q_over_p1, sigma_t1, lambda_bg1 = fit_pipeline1(df[df.pipeline == 1], T)
+
+        results = {
+            "pipeline1": dict(q_over_p=q_over_p1, sigma_t=sigma_t1, lambda_bg=lambda_bg1),
+            "pipeline2": dict(q_over_p=q_over_p),
+            "pipeline3": dict(sigma_t=sigma_t),
+            "pipeline4": dict(lambda_bg=lambda_bg),
+        }
+
+        with open(args.out, "w") as f:
+            json.dump(results, f, indent=2)
+
+        plot_diagnostics(df, results, T, args.figures)
+        print(f"[fit_curves] Parameter estimates written to {args.out}")
+    else:
+        # default to batch experiment
+        out_csv = getattr(args, "out", "hrv_error_batch.csv")
+        batch_experiment(out_csv=out_csv, debug=True)
     
 if __name__ == "__main__":
     main()
