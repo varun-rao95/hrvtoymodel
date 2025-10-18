@@ -18,6 +18,7 @@ rng = np.random.default_rng(42)
 # High-level curve-fitting helpers (dataset assembly, models, fitting)
 # ---------------------------------------------------------------------
 
+DEBUG = False
 
 def miss_model(hr, q_over_p, T):
     """Pipeline-2 miss-only curve."""
@@ -72,6 +73,7 @@ def assemble_hrv_dataset(
                 jitter_std=jitter_std,
                 p_detect=p_detect,
                 bg_rate=bg_rate,
+                debug=DEBUG,
             )
             for pipeline_id, err in enumerate(errs, start=1):
                 records.append(
@@ -394,7 +396,7 @@ def batch_experiment(
         for i, period in enumerate(periods):
             err_full_raw, err_miss_raw, err_jitter_raw, err_extraneous_raw = simulate_errors_for_rate(
                 period, T, local_rng, jitter_std=jitter_std,
-                p_detect=p_detect, bg_rate=bg_rate, debug=True
+                p_detect=p_detect, bg_rate=bg_rate, debug=DEBUG
             )
             # number of intervals for this period in window T
             n_int = max(int(T / period) - 1, 1)
