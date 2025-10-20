@@ -75,7 +75,7 @@ def assemble_hrv_dataset(
                 bg_rate=bg_rate,
                 debug=DEBUG,
             )
-            for pipeline_id, err in enumerate(errs, start=1):
+            for pipeline_id, err in enumerate(errs, start=1):  # ai! replace pipeline_id to be according to map
                 records.append(
                     dict(
                         run=run,
@@ -149,14 +149,14 @@ def bootstrap_parameters(fit_func, df, T, n_boot=1000, random_state=0):
 
 def _plot_pipeline(df, T, pipeline_id, params, out_dir):
     hr_grid = np.linspace(df.heart_rate.min(), df.heart_rate.max(), 300)
-    if pipeline_id == 1:
+    if pipeline_id == 1:  # ai! rename pipeline id according to map
         pred = combined_model(hr_grid, *params, T)
     elif pipeline_id == 2:
-        pred = miss_model(hr_grid, params, T)
+        pred = miss_model(hr_grid, params[0], T)
     elif pipeline_id == 3:
-        pred = jitter_model(hr_grid, params, T)
+        pred = jitter_model(hr_grid, params[0], T) 
     else:
-        pred = extra_model(hr_grid, params, T)
+        pred = extra_model(hr_grid, params[0], T)
 
     sns.scatterplot(
         data=df, x="heart_rate", y="mae_sqrtN", alpha=0.4, label="simulated"
@@ -270,7 +270,7 @@ def apply_missed_detections(times, p_detect=0.9, rng=rng):
     keep = rng.uniform(size=times.shape) < p_detect
     return times[keep]
 
-def add_extraneous_events(times, T, bg_rate=0.2, rng=rng):
+def apply_extraneous_events(times, T, bg_rate=0.2, rng=rng):
     """
     Superpose independent homogeneous Poisson 'clutter' with constant rate.
     Returns merged and sorted array.
@@ -293,7 +293,7 @@ def apply_noise_pipeline(times, T, jitter_std=0.02, p_detect=0.9, bg_rate=0.2, r
     """
     detected = apply_missed_detections(times, p_detect, rng)
     jittered = add_timestamp_jitter(detected, jitter_std, rng)
-    final_times = add_extraneous_events(jittered, T, bg_rate, rng)
+    final_times = apply_extraneous_events(jittered, T, bg_rate, rng)
     return np.clip(final_times, 0, T)
 
 def compute_peak_to_peak_intervals(times):
@@ -498,19 +498,23 @@ def main():
     p_fit = sub.add_parser("fit_curves", help="assemble dataset and fit error curves")
     p_fit.add_argument("--out", default="results.json")
     p_fit.add_argument("--figures", default="figures")
+    for p in (p_batch, p_fit):
+        p.add_argument("--jitter_std", type=float, default=0.02)
+        p.add_argument("--p_detect",   type=float, default=0.9)
+        p.add_argument("--bg_rate",    type=float, default=0.2)
 
     args = parser.parse_args()
 
     if args.cmd == "fit_curves":
-        df = assemble_hrv_dataset()
+        df = assemble_hrv_dataset(jitter_std=args.jitter_std, p_detect=args.p_detect, bg_rate=args.bg_detect)
         T = 900
 
-        q_over_p = fit_pipeline2(df[df.pipeline == 2], T)
+        q_over_p = fit_pipeline2(df[df.pipeline == 2], T)  # ai! rename pipeline ids according to map: {1: combined, 2: missing, 3: jitter, 4: extraneous events
         sigma_t = fit_pipeline3(df[df.pipeline == 3], T)
         lambda_bg = fit_pipeline4(df[df.pipeline == 4], T)
         q_over_p1, sigma_t1, lambda_bg1 = fit_pipeline1(df[df.pipeline == 1], T)
 
-        results = {
+        results = {  # ai! renae pipeline ids according to above map
             "pipeline1": dict(q_over_p=q_over_p1, sigma_t=sigma_t1, lambda_bg=lambda_bg1),
             "pipeline2": dict(q_over_p=q_over_p),
             "pipeline3": dict(sigma_t=sigma_t),
