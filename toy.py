@@ -78,12 +78,13 @@ def assemble_hrv_dataset(
                 bg_rate=bg_rate,
                 debug=DEBUG,
             )
-            for pipeline_id, err in enumerate(errs, start=1):  # ai! replace pipeline_id to be according to map
+            pipeline_map = {1: "combined", 2: "missing", 3: "jitter", 4: "extraneous"}
+            for pipeline_id, err in enumerate(errs, start=1):
                 records.append(
                     dict(
                         run=run,
                         heart_rate=hr,
-                        pipeline=pipeline_id,
+                        pipeline=pipeline_map[pipeline_id],
                         mae_sqrtN=err * scale,
                     )
                 )
@@ -152,12 +153,12 @@ def bootstrap_parameters(fit_func, df, T, n_boot=1000, random_state=0):
 
 def _plot_pipeline(df, T, pipeline_id, params, out_dir):
     hr_grid = np.linspace(df.heart_rate.min(), df.heart_rate.max(), 300)
-    if pipeline_id == 1:  # ai! rename pipeline id according to map
+    if pipeline_id == "combined":
         pred = combined_model(hr_grid, *params, T)
-    elif pipeline_id == 2:
+    elif pipeline_id == "missing":
         pred = miss_model(hr_grid, params[0], T)
-    elif pipeline_id == 3:
-        pred = jitter_model(hr_grid, params[0], T) 
+    elif pipeline_id == "jitter":
+        pred = jitter_model(hr_grid, params[0], T)
     else:
         pred = extra_model(hr_grid, params[0], T)
 
@@ -509,19 +510,19 @@ def main():
     args = parser.parse_args()
 
     if args.cmd == "fit_curves":
-        df = assemble_hrv_dataset(jitter_std=args.jitter_std, p_detect=args.p_detect, bg_rate=args.bg_detect)
+        df = assemble_hrv_dataset(jitter_std=args.jitter_std, p_detect=args.p_detect, bg_rate=args.bg_rate)
         T = 900
 
-        q_over_p = fit_pipeline2(df[df.pipeline == 2], T)  # ai! rename pipeline ids according to map: {1: combined, 2: missing, 3: jitter, 4: extraneous events
-        sigma_t = fit_pipeline3(df[df.pipeline == 3], T)
-        lambda_bg = fit_pipeline4(df[df.pipeline == 4], T)
-        q_over_p1, sigma_t1, lambda_bg1 = fit_pipeline1(df[df.pipeline == 1], T)
+        q_over_p = fit_pipeline2(df[df.pipeline == "missing"], T)
+        sigma_t = fit_pipeline3(df[df.pipeline == "jitter"], T)
+        lambda_bg = fit_pipeline4(df[df.pipeline == "extraneous"], T)
+        q_over_p1, sigma_t1, lambda_bg1 = fit_pipeline1(df[df.pipeline == "combined"], T)
 
-        results = {  # ai! renae pipeline ids according to above map
-            "pipeline1": dict(q_over_p=q_over_p1, sigma_t=sigma_t1, lambda_bg=lambda_bg1),
-            "pipeline2": dict(q_over_p=q_over_p),
-            "pipeline3": dict(sigma_t=sigma_t),
-            "pipeline4": dict(lambda_bg=lambda_bg),
+        results = {
+            "combined": dict(q_over_p=q_over_p1, sigma_t=sigma_t1, lambda_bg=lambda_bg1),
+            "missing": dict(q_over_p=q_over_p),
+            "jitter": dict(sigma_t=sigma_t),
+            "extraneous": dict(lambda_bg=lambda_bg),
         }
 
         with open(args.out, "w") as f:
