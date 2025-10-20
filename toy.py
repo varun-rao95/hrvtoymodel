@@ -14,14 +14,12 @@ import argparse
 
 rng = np.random.default_rng(42)
 
-# ai! instead of using pipeline ids, let's use the following map:: {1: combined, 2: missing, 3: jitter, 4: extraneous events
-# ai! for any following comments referencing a rename or modify of pipeline ids, please refer to the above map- goal is to get plots to show current pipelines as titles and refer to pipelines by pipeline names rather than idx
 
 # ---------------------------------------------------------------------
 # High-level curve-fitting helpers (dataset assembly, models, fitting)
 # ---------------------------------------------------------------------
 
-DEBUG = False
+DEBUG = True 
 
 def miss_model(hr, q_over_p, T):
     """Pipeline-2 miss-only curve."""
@@ -314,11 +312,11 @@ def measure_hrv_error(ideal_times, noisy_times, debug=False):
     ideal_intervals = compute_peak_to_peak_intervals(ideal_times)
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
     if debug:
-        os.makedirs("debug_hrv", exist_ok=True)
-        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + ".txt")
+        os.makedirs("debug_hrv", exist_ok=True) 
+        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + ".csv")
         with open(filename, "w") as f:
-            f.write("Ideal intervals: " + str(ideal_intervals) + "\n")
-            f.write("Noisy intervals: " + str(noisy_intervals) + "\n")
+            f.write("ideal_intervals,noisy_intervals\n")
+            f.write("\"" + ",".join(map(str, ideal_intervals)) + "\",\"" + ",".join(map(str, noisy_intervals)) + "\"")
     min_len = min(len(ideal_intervals), len(noisy_intervals))
     if min_len == 0:
         return 0.0
