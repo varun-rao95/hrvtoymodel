@@ -14,6 +14,9 @@ import argparse
 
 rng = np.random.default_rng(42)
 
+# ai! instead of using pipeline ids, let's use the following map:: {1: combined, 2: missing, 3: jitter, 4: extraneous events
+# ai! for any following comments referencing a rename or modify of pipeline ids, please refer to the above map- goal is to get plots to show current pipelines as titles and refer to pipelines by pipeline names rather than idx
+
 # ---------------------------------------------------------------------
 # High-level curve-fitting helpers (dataset assembly, models, fitting)
 # ---------------------------------------------------------------------
@@ -329,7 +332,7 @@ def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_r
     noisy_full = apply_noise_pipeline(ideal, T, jitter_std=jitter_std, p_detect=p_detect, bg_rate=bg_rate, rng=rng)
     noisy_missing = apply_missed_detections(ideal, p_detect=p_detect, rng=rng)
     noisy_jitter = add_timestamp_jitter(ideal, jitter_std, rng)
-    noisy_extraneous = add_extraneous_events(ideal, T, bg_rate, rng)
+    noisy_extraneous = apply_extraneous_events(ideal, T, bg_rate, rng)
     return (
         measure_hrv_error(ideal, noisy_full, debug),
         measure_hrv_error(ideal, noisy_missing, debug),
