@@ -98,8 +98,13 @@ def _fit_curve(func, hr, y, p0, debug=False, label=""):
     residuals = y - fitted
     if debug:
         filename = f"debug_{label}_residuals.csv"
-        os.makedirs("debug_residuals", exist_ok=True)
-        filename = os.path.join("debug_residuals",filename)
+        dir_path = "debug_residuals"
+        # clean directory so that each run starts fresh
+        if os.path.isdir(dir_path):
+            for f in os.listdir(dir_path):
+                os.remove(os.path.join(dir_path, f))
+        os.makedirs(dir_path, exist_ok=True)
+        filename = os.path.join(dir_path, filename)
         with open(filename, "w", newline="") as f:
             f.write("heart_rate,observed,fitted,residual\n")
             for h_val, y_val, fit_val, resid in zip(hr, y, fitted, residuals):
@@ -333,8 +338,12 @@ def measure_hrv_error(ideal_times, noisy_times, debug=False, label=""):
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
     min_len = min(len(ideal_intervals), len(noisy_intervals))
     if debug:
-        os.makedirs("debug_hrv", exist_ok=True)
-        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
+        dir_path = "debug_hrv"
+        if os.path.isdir(dir_path):
+            for f in os.listdir(dir_path):
+                os.remove(os.path.join(dir_path, f))
+        os.makedirs(dir_path, exist_ok=True)
+        filename = os.path.join(dir_path, datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
         with open(filename, "w") as f:
             f.write("ideal_intervals,noisy_intervals\n")
             for id, ns in list(zip(ideal_intervals, noisy_intervals))[:min_len]:
@@ -555,7 +564,64 @@ def main():
         plot_diagnostics(df, results, T, args.figures)
         print(f"[fit_curves] Parameter estimates written to {args.out}")
     elif args.cmd == "plot_diagnostics":
-        pass
+        # Plot diagnostics from previously generated debug CSVs
+        residual_dir = Path(args.residual_dir)
+        hrv_dir = Path(args.hrv_dir)
+
+        # --- residuals ---
+        if residual_dir.is_dir():
+            out_res_dir = Path("figures") / "debug_residuals"
+            out_res_dir.mkdir(parents=True, exist_ok=True)
+            for csv_path in residual_dir.glob("*_residuals.csv"):
+                df_res = pd.read_csv(csv_path)
+                plt.figure()
+                sns.scatterplot(x="heart_rate", y="residual", data=df_res, alpha=0.6)
+                plt.axhline(0, color="k", linestyle="--", linewidth=1)
+                plt.xlabel("Heart Rate (bpm)")
+                plt.ylabel("Residual (s · √N)")
+                plt.title(csv_path.stem.replace("_", " ").title())
+                plt.tight_layout()
+                plt.savefig(out_res_dir / f"{csv_path.stem}.png", dpi=150)
+                plt.clf()
+        else:
+            print(f"[plot_diagnostics] Residual directory '{residual_dir}' not found.")
+
+        # --- HRV beat-to-beat intervals ---
+        if hrv_dir.is_dir():
+            out_hrv_dir = Path("figures") / "debug_hrv"
+            out_hrv_dir.mkdir(parents=True, exist_ok=True)
+            pipelines = {"combined": [], "missing": [], "jitter": [], "extraneous": []}
+
+            for csv_path in hrv_dir.glob("*_*.csv"):
+                label = csv_path.stem.split("_")[-1]
+                if label in pipelines:
+                    df_hrv = pd.read_csv(csv_path)
+                    pipelines[label].append(df_hrv)
+
+            for label, parts in pipelines.items():
+                if not parts:
+                    continue
+                df_concat = pd.concat(parts, ignore_index=True)
+                plt.figure()
+                sns.scatterplot(
+                    x="ideal_intervals",
+                    y="noisy_intervals",
+                    data=df_concat,
+                    alpha=0.4,
+                )
+                max_val = max(
+                    df_concat["ideal_intervals"].max(),
+                    df_concat["noisy_intervals"].max(),
+                )
+                plt.plot([0, max_val], [0, max_val], color="k", linestyle="--", linewidth=1)
+                plt.xlabel("Ideal Interval (s)")
+                plt.ylabel("Noisy Interval (s)")
+                plt.title(f"Beat-to-beat intervals – {label}")
+                plt.tight_layout()
+                plt.savefig(out_hrv_dir / f"{label}_intervals.png", dpi=150)
+                plt.clf()
+        else:
+            print(f"[plot_diagnostics] HRV directory '{hrv_dir}' not found.")
     else:
         # default to batch experiment
         out_csv = getattr(args, "out", "hrv_error_batch.csv")
