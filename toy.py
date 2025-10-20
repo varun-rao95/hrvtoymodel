@@ -175,9 +175,9 @@ def _plot_pipeline(df, T, pipeline_id, params, out_dir):
 
 
 def plot_diagnostics(df, results, T, out_dir="figures"):
-    for pid in (1, 2, 3, 4):
-        res = results[f"pipeline{pid}"]
-        _plot_pipeline(df[df.pipeline == pid], T, pid, list(res.values()), out_dir)
+    for pipeline in ("combined", "missing", "jitter", "extraneous"):
+        res = results[pipeline]
+        _plot_pipeline(df[df.pipeline == pipeline], T, pipeline, list(res.values()), out_dir)
 
 # Signal Generation
 
