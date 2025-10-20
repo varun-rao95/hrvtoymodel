@@ -324,20 +324,21 @@ def compute_peak_to_peak_intervals(times):
     """
     return np.diff(times)
 
-def measure_hrv_error(ideal_times, noisy_times, debug=False):
+def measure_hrv_error(ideal_times, noisy_times, debug=False, label=""):
     """
     Measure error in heart rate variability (HRV) as the std deviation of the differences
     between consecutive intervals in ideal and noisy times.
     """
     ideal_intervals = compute_peak_to_peak_intervals(ideal_times)
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
+    min_len = min(len(ideal_intervals), len(noisy_intervals))
     if debug:
         os.makedirs("debug_hrv", exist_ok=True)
-        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + ".csv")
+        filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
         with open(filename, "w") as f:
             f.write("ideal_intervals,noisy_intervals\n")
-            f.write("\"" + ",".join(map(str, ideal_intervals)) + "\",\"" + ",".join(map(str, noisy_intervals)) + "\"")
-    min_len = min(len(ideal_intervals), len(noisy_intervals))
+            for id, ns in list(zip(ideal_intervals, noisy_intervals))[:min_len]:
+                f.write(str(id) + "," + str(ns) + "\n")
     if min_len == 0:
         return 0.0
     error = noisy_intervals[:min_len] - ideal_intervals[:min_len]
@@ -353,10 +354,10 @@ def simulate_errors_for_rate(period, T, rng, jitter_std=0.02, p_detect=0.9, bg_r
     noisy_jitter = add_timestamp_jitter(ideal, jitter_std, rng)
     noisy_extraneous = apply_extraneous_events(ideal, T, bg_rate, rng)
     return (
-        measure_hrv_error(ideal, noisy_full, debug),
-        measure_hrv_error(ideal, noisy_missing, debug),
-        measure_hrv_error(ideal, noisy_jitter, debug),
-        measure_hrv_error(ideal, noisy_extraneous, debug)
+        measure_hrv_error(ideal, noisy_full, debug, label="combined"),
+        measure_hrv_error(ideal, noisy_missing, debug, label="missing"),
+        measure_hrv_error(ideal, noisy_jitter, debug, label="jitter"),
+        measure_hrv_error(ideal, noisy_extraneous, debug, label="extraneous")
     )
 
 def batch_experiment(
@@ -524,6 +525,11 @@ def main():
         p.add_argument("--jitter_std", type=float, default=0.02)
         p.add_argument("--p_detect",   type=float, default=0.9)
         p.add_argument("--bg_rate",    type=float, default=0.2)
+    
+    # --- plot residuals + debug_hrv curves ---
+    p_debug = sub.add_parser("plot_diagnostics", help="plot residuals from fitted curves + raw hrvs")
+    p_debug.add_argument("--residual_dir", default="debug_residuals")
+    p_debug.add_argument("--hrv_dir", default="debug_hrv")
 
     args = parser.parse_args()
 
@@ -548,6 +554,8 @@ def main():
 
         plot_diagnostics(df, results, T, args.figures)
         print(f"[fit_curves] Parameter estimates written to {args.out}")
+    elif args.cmd == "plot_diagnostics":
+        pass
     else:
         # default to batch experiment
         out_csv = getattr(args, "out", "hrv_error_batch.csv")
