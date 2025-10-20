@@ -19,7 +19,7 @@ rng = np.random.default_rng(42)
 # High-level curve-fitting helpers (dataset assembly, models, fitting)
 # ---------------------------------------------------------------------
 
-DEBUG = True 
+DEBUG = True
 
 def miss_model(hr, q_over_p, T):
     """Pipeline-2 miss-only curve."""
@@ -92,27 +92,37 @@ def assemble_hrv_dataset(
 # ------------------------- fitting helpers -------------------------
 
 
-def _fit_curve(func, hr, y, p0):
+def _fit_curve(func, hr, y, p0, debug=False, label=""):
     popt, _ = curve_fit(func, hr, y, p0=p0, maxfev=10000)
+    fitted = func(hr, *popt)
+    residuals = y - fitted
+    if debug:
+        filename = f"debug_{label}_residuals.csv"
+        os.makedirs("debug_residuals", exist_ok=True)
+        filename = os.path.join("debug_residuals",filename)
+        with open(filename, "w", newline="") as f:
+            f.write("heart_rate,observed,fitted,residual\n")
+            for h_val, y_val, fit_val, resid in zip(hr, y, fitted, residuals):
+                f.write(f"{h_val},{y_val},{fit_val},{resid}\n")
     return popt
 
 
 def fit_pipeline2(df, T):
     hr = df["heart_rate"].values
     y = df["mae_sqrtN"].values
-    return _fit_curve(lambda h, q: miss_model(h, q, T), hr, y, p0=(0.1,))[0]
+    return _fit_curve(lambda h, q: miss_model(h, q, T), hr, y, p0=(0.1,), debug=DEBUG, label="missing")[0]
 
 
 def fit_pipeline3(df, T):
     hr = df["heart_rate"].values
     y = df["mae_sqrtN"].values
-    return _fit_curve(lambda h, s: jitter_model(h, s, T), hr, y, p0=(0.01,))[0]
+    return _fit_curve(lambda h, s: jitter_model(h, s, T), hr, y, p0=(0.01,), debug=DEBUG, label="jitter")[0]
 
 
 def fit_pipeline4(df, T):
     hr = df["heart_rate"].values
     y = df["mae_sqrtN"].values
-    return _fit_curve(lambda h, l: extra_model(h, l, T), hr, y, p0=(0.01,))[0]
+    return _fit_curve(lambda h, l: extra_model(h, l, T), hr, y, p0=(0.01,), debug=DEBUG, label="extraneous")[0]
 
 
 def fit_pipeline1(df, T, huber_delta=1.0):
@@ -126,6 +136,16 @@ def fit_pipeline1(df, T, huber_delta=1.0):
     res = least_squares(
         residuals, x0, loss="huber", f_scale=huber_delta, max_nfev=10000
     )
+    fitted = combined_model(hr, res.x[0], res.x[1], res.x[2], T)
+    residuals_arr = y - fitted
+    if DEBUG:
+        filename = f"debug_combined_residuals.csv"
+        os.makedirs("debug_residuals", exist_ok=True)
+        filename = os.path.join("debug_residuals", filename)
+        with open(filename, "w", newline="") as f:
+            f.write("heart_rate,observed,fitted,residual\n")
+            for h_val, y_val, fit_val, resid in zip(hr, y, fitted, residuals_arr):
+                f.write(f"{h_val},{y_val},{fit_val},{resid}\n")
     return res.x
 
 
@@ -312,7 +332,7 @@ def measure_hrv_error(ideal_times, noisy_times, debug=False):
     ideal_intervals = compute_peak_to_peak_intervals(ideal_times)
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
     if debug:
-        os.makedirs("debug_hrv", exist_ok=True) 
+        os.makedirs("debug_hrv", exist_ok=True)
         filename = os.path.join("debug_hrv", datetime.now().strftime("%Y%m%d%H%M%S%f") + ".csv")
         with open(filename, "w") as f:
             f.write("ideal_intervals,noisy_intervals\n")
