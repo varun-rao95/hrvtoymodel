@@ -21,6 +21,11 @@ rng = np.random.default_rng(42)
 
 DEBUG = True
 
+# default directory placeholders – will be overwritten at runtime based on --label
+DIR_DEBUG_RES = Path("debug_residuals")
+DIR_DEBUG_HRV = Path("debug_hrv")
+DIR_FIGURES   = Path("figures")
+
 def miss_model(hr, q_over_p, T):
     """Pipeline-2 miss-only curve."""
     hr = np.asarray(hr, dtype=float)
@@ -98,9 +103,9 @@ def _fit_curve(func, hr, y, p0, debug=False, label=""):
     residuals = y - fitted
     if debug:
         filename = f"debug_{label}_residuals.csv"
-        dir_path = "debug_residuals"
-        os.makedirs(dir_path, exist_ok=True)
-        filename = os.path.join(dir_path, filename)
+        dir_path = DIR_DEBUG_RES
+        dir_path.mkdir(parents=True, exist_ok=True)
+        filename = dir_path / filename
         with open(filename, "w", newline="") as f:
             f.write("heart_rate,observed,fitted,residual\n")
             for h_val, y_val, fit_val, resid in zip(hr, y, fitted, residuals):
@@ -141,8 +146,8 @@ def fit_pipeline1(df, T, huber_delta=1.0):
     residuals_arr = y - fitted
     if DEBUG:
         filename = f"debug_combined_residuals.csv"
-        os.makedirs("debug_residuals", exist_ok=True)
-        filename = os.path.join("debug_residuals", filename)
+        DIR_DEBUG_RES.mkdir(parents=True, exist_ok=True)
+        filename = DIR_DEBUG_RES / filename
         with open(filename, "w", newline="") as f:
             f.write("heart_rate,observed,fitted,residual\n")
             for h_val, y_val, fit_val, resid in zip(hr, y, fitted, residuals_arr):
@@ -334,9 +339,9 @@ def measure_hrv_error(ideal_times, noisy_times, debug=False, label=""):
     noisy_intervals = compute_peak_to_peak_intervals(noisy_times)
     min_len = min(len(ideal_intervals), len(noisy_intervals))
     if debug:
-        dir_path = "debug_hrv"
-        os.makedirs(dir_path, exist_ok=True)
-        filename = os.path.join(dir_path, datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
+        dir_path = DIR_DEBUG_HRV
+        dir_path.mkdir(parents=True, exist_ok=True)
+        filename = dir_path / (datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
         with open(filename, "w") as f:
             f.write("ideal_intervals,noisy_intervals\n")
             for id, ns in list(zip(ideal_intervals, noisy_intervals))[:min_len]:
@@ -523,6 +528,7 @@ def main():
     p_fit = sub.add_parser("fit_curves", help="assemble dataset and fit error curves")
     p_fit.add_argument("--out", default="results.json")
     p_fit.add_argument("--figures", default="figures")
+    p_fit.add_argument("--label", default=None, help="run label (defaults to slug built from params)")
     for p in (p_batch, p_fit):
         p.add_argument("--jitter_std", type=float, default=0.02)
         p.add_argument("--p_detect",   type=float, default=0.9)
@@ -535,13 +541,26 @@ def main():
 
     args = parser.parse_args()
 
+    # -----------------------------------------------------------------
+    # Derive run-specific directories from --label (or auto-slug)
+    # -----------------------------------------------------------------
+    if not getattr(args, "label", None):
+        args.label = f"jit{args.jitter_std}_pd{args.p_detect}_bg{args.bg_rate}"
+
+    base_dir = Path("runs") / args.label
+    # update module-level directory placeholders
+    globals()["DIR_DEBUG_RES"] = base_dir / "debug_residuals"
+    globals()["DIR_DEBUG_HRV"] = base_dir / "debug_hrv"
+    globals()["DIR_FIGURES"]   = base_dir / "figures"
+    DIR_DEBUG_RES.mkdir(parents=True, exist_ok=True)
+    DIR_DEBUG_HRV.mkdir(parents=True, exist_ok=True)
+    DIR_FIGURES.mkdir(parents=True, exist_ok=True)
+    # default result path lives under the run directory
+    if args.cmd == "fit_curves" and args.out == "results.json":
+        args.out = base_dir / args.out
+
     if args.cmd == "fit_curves":
-        # some quick hrv debug file cleanup
-        if DEBUG:
-            dir_path = "debug_hrv"
-            if os.path.isdir(dir_path):
-                for f in os.listdir(dir_path):
-                    os.remove(os.path.join(dir_path, f))
+        # no cleanup – each run writes to its own sub-directories
 
         df = assemble_hrv_dataset(jitter_std=args.jitter_std, p_detect=args.p_detect, bg_rate=args.bg_rate)
         T = 900
@@ -561,7 +580,7 @@ def main():
         with open(args.out, "w") as f:
             json.dump(results, f, indent=2)
 
-        plot_diagnostics(df, results, T, args.figures)
+        plot_diagnostics(df, results, T, DIR_FIGURES)
         print(f"[fit_curves] Parameter estimates written to {args.out}")
     elif args.cmd == "plot_diagnostics":
         # Plot diagnostics from previously generated debug CSVs
