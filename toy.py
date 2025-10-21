@@ -602,19 +602,13 @@ def main():
                 if not parts:
                     continue
                 df_concat = pd.concat(parts, ignore_index=True)
-                df_concat = df_concat.assign(id_sum=df_concat.ideal_intervals.cumsum())
-                df_concat = df_concat.assign(ns_sum=df_concat.noisy_intervals.cumsum())
-                # Plot cumulative timeline to visualise drift between ideal and noisy intervals
+                df_concat["delta"] = df_concat.noisy_intervals - df_concat.ideal_intervals 
                 plt.figure()
-                plt.plot(df_concat["id_sum"], df_concat["ns_sum"], linewidth=0.8)
-                max_val = max(
-                    df_concat["id_sum"].max(),
-                    df_concat["ns_sum"].max(),
-                )
-                plt.plot([0, max_val], [0, max_val], color="k", linestyle="--", linewidth=1)
-                plt.xlabel("Ideal Interval (s)")
-                plt.ylabel("Noisy Interval (s)")
-                plt.title(f"Beat-to-beat intervals – {label}")
+                plt.axhline(0, ls="--", c="k", lw=0.8)
+                sns.histplot(df_concat.delta, bins=50, kde=True)
+                plt.xlabel("Beat index")
+                plt.ylabel("Interval error (s)")
+                plt.title(f"Per-beat intervals – {label}")
                 plt.tight_layout()
                 plt.savefig(out_hrv_dir / f"{label}_intervals.png", dpi=150)
                 plt.clf()
