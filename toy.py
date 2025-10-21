@@ -99,10 +99,6 @@ def _fit_curve(func, hr, y, p0, debug=False, label=""):
     if debug:
         filename = f"debug_{label}_residuals.csv"
         dir_path = "debug_residuals"
-        # clean directory so that each run starts fresh
-        if os.path.isdir(dir_path):
-            for f in os.listdir(dir_path):
-                os.remove(os.path.join(dir_path, f))
         os.makedirs(dir_path, exist_ok=True)
         filename = os.path.join(dir_path, filename)
         with open(filename, "w", newline="") as f:
@@ -339,9 +335,6 @@ def measure_hrv_error(ideal_times, noisy_times, debug=False, label=""):
     min_len = min(len(ideal_intervals), len(noisy_intervals))
     if debug:
         dir_path = "debug_hrv"
-        if os.path.isdir(dir_path):
-            for f in os.listdir(dir_path):
-                os.remove(os.path.join(dir_path, f))
         os.makedirs(dir_path, exist_ok=True)
         filename = os.path.join(dir_path, datetime.now().strftime("%Y%m%d%H%M%S%f") + f"_{label}.csv")
         with open(filename, "w") as f:
@@ -543,6 +536,13 @@ def main():
     args = parser.parse_args()
 
     if args.cmd == "fit_curves":
+        # some quick hrv debug file cleanup
+        if DEBUG:
+            dir_path = "debug_hrv"
+            if os.path.isdir(dir_path):
+                for f in os.listdir(dir_path):
+                    os.remove(os.path.join(dir_path, f))
+
         df = assemble_hrv_dataset(jitter_std=args.jitter_std, p_detect=args.p_detect, bg_rate=args.bg_rate)
         T = 900
 
@@ -602,16 +602,14 @@ def main():
                 if not parts:
                     continue
                 df_concat = pd.concat(parts, ignore_index=True)
+                df_concat = df_concat.assign(id_sum=df_concat.ideal_intervals.cumsum())
+                df_concat = df_concat.assign(ns_sum=df_concat.noisy_intervals.cumsum())
+                # Plot cumulative timeline to visualise drift between ideal and noisy intervals
                 plt.figure()
-                sns.scatterplot(
-                    x="ideal_intervals",
-                    y="noisy_intervals",
-                    data=df_concat,
-                    alpha=0.4,
-                )
+                plt.plot(df_concat["id_sum"], df_concat["ns_sum"], linewidth=0.8)
                 max_val = max(
-                    df_concat["ideal_intervals"].max(),
-                    df_concat["noisy_intervals"].max(),
+                    df_concat["id_sum"].max(),
+                    df_concat["ns_sum"].max(),
                 )
                 plt.plot([0, max_val], [0, max_val], color="k", linestyle="--", linewidth=1)
                 plt.xlabel("Ideal Interval (s)")
