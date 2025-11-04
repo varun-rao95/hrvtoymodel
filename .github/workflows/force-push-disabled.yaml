@@ -1,0 +1,27 @@
+name: Protect master branch
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.FORCE_PUSH_TOKEN }}
+    steps:
+      - name: Disable force-pushes on master
+        run: |
+          curl -s -X PUT \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/hrvtoymodel/branches/master/protection \
+            -d '{
+              "required_status_checks": null,
+              "enforce_admins": true,
+              "required_pull_request_reviews": null,
+              "restrictions": null,
+              "allow_force_pushes": false,
+              "allow_deletions": false
+            }' 
