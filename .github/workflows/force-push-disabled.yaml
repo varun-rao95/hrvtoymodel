@@ -10,6 +10,7 @@ jobs:
     env:
       TOKEN: ${{ secrets.FORCE_PUSH_TOKEN }}
     steps:
+<<<<<<< Updated upstream
       - name: Disable force-pushes on master
         run: |
           curl -s -X PUT \
@@ -25,3 +26,33 @@ jobs:
               "allow_force_pushes": false,
               "allow_deletions": false
             }' 
+=======
+      - name: Check token identity
+        run: |
+          echo "Authenticated as:"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/user \
+               | jq '{login, id, type}'
+
+      - name: Show current branch protection
+        run: |
+          echo "Branch protection for master:"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/hrvtoymodel/branches/master/protection \
+               | jq
+
+      - name: Fail if force pushes are allowed
+        run: |
+          allow_force_push=$(curl -s -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hrvtoymodel/branches/master/protection \
+            | jq '.allow_force_pushes.enabled')
+          if [ "$allow_force_push" != "false" ]; then
+            echo "❌ Force pushes are ENABLED on master! Fail the workflow."
+            exit 1
+          else
+            echo "✅ Force pushes are disabled on master."
+          fi
+>>>>>>> Stashed changes
